@@ -1,0 +1,177 @@
+name: "ok-to-test"
+description: "Gate pull_request_target CI for external contributors using org/team membership, repo permissions, and an ok-to-test label approval workflow."
+branding:
+  icon: "shield"
+  color: "green"
+
+inputs:
+  github-token:
+    description: "GitHub token with repo and org:read scopes. Defaults to the workflow token."
+    default: ${{ github.token }}
+  trusted-bots:
+    description: "Comma-separated list of trusted bot usernames that bypass all checks."
+    default: "dependabot[bot],renovate[bot]"
+  team-slugs:
+    description: "Comma-separated org team slugs to check membership for. Leave empty to skip team checks."
+    default: ""
+  required-permission:
+    description: "Minimum repository permission level required (write or admin)."
+    default: "write"
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
+      with:
+        github-token: ${{ inputs.github-token }}
+        script: |
+          // ok-to-test: Gate pull_request_target CI for external contributors.
+          //
+          // Permission check order:
+          //   1. Trusted bots
+          //   2. Org/team membership
+          //   3. Repository collaborator permission
+          //   4. ok-to-test label (maintainer approval for external contributors)
+          //
+          // On a successful ok-to-test label event the label is removed immediately
+          // so that subsequent pushes require re-approval.
+
+          if (!context || !context.payload || !context.payload.pull_request) {
+            core.setFailed("Invalid GitHub context: missing required pull_request information");
+            return;
+          }
+
+          const actor = context.payload.pull_request.user.login;
+          const repoOwner = context.repo.owner;
+          const repoName = context.repo.repo;
+          const targetOrg = context.repo.owner;
+
+          const trustedBots = `${{ inputs.trusted-bots }}`
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean);
+          const teamSlugs = `${{ inputs.team-slugs }}`
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean);
+          const requiredPermission = `${{ inputs.required-permission }}`;
+
+          core.info(`Starting permission check for user: @${actor}`);
+          core.info(`Repository: ${repoOwner}/${repoName}`);
+
+          // --- Condition 1: Trusted bots ---
+          core.info(`Checking if @${actor} is a trusted bot...`);
+          if (trustedBots.includes(actor)) {
+            core.info(`User @${actor} is a trusted bot. Proceeding.`);
+            return;
+          }
+          core.info(`User @${actor} is not a trusted bot.`);
+
+          // --- Condition 2: Org/team membership ---
+          core.info(`Checking organization and team membership...`);
+          try {
+            if (teamSlugs.length > 0) {
+              core.info(`Checking team membership for ${teamSlugs.length} team(s)...`);
+              for (const team_slug of teamSlugs) {
+                core.info(`  Checking team: ${team_slug}...`);
+                try {
+                  const membership = await github.rest.teams.getMembershipForUserInOrg({
+                    org: targetOrg,
+                    team_slug,
+                    username: actor,
+                  });
+                  if (
+                    membership?.data?.state === "active" &&
+                    (membership.data.role === "maintainer" || membership.data.role === "member")
+                  ) {
+                    core.info(`User @${actor} is a member of team '${team_slug}'. Proceeding.`);
+                    return;
+                  }
+                  core.info(`  Team membership found but state is not active: ${membership.data.state}`);
+                } catch (err) {
+                  core.info(`  User @${actor} is not a member of team '${team_slug}': ${err.message}`);
+                }
+              }
+              core.info(`User @${actor} is not a member of any configured teams. Falling back to org membership.`);
+            }
+
+            core.info(`Checking organization membership for @${actor} in '${targetOrg}'...`);
+            try {
+              await github.rest.orgs.checkMembershipForUser({
+                org: targetOrg,
+                username: actor,
+              });
+              core.info(`User @${actor} is a member of '${targetOrg}'. Proceeding.`);
+              return;
+            } catch (err) {
+              core.info(`  Private membership check failed: ${err.message}`);
+              try {
+                await github.rest.orgs.checkPublicMembershipForUser({
+                  org: targetOrg,
+                  username: actor,
+                });
+                core.info(`User @${actor} is a public member of '${targetOrg}'. Proceeding.`);
+                return;
+              } catch (publicErr) {
+                core.info(`  Public membership check failed: ${publicErr.message}`);
+                throw publicErr;
+              }
+            }
+          } catch (error) {
+            core.info(`User @${actor} is not a member of '${targetOrg}'. Checking repository permissions.`);
+          }
+
+          // --- Condition 3: Repository collaborator permission ---
+          core.info(`Checking repository collaborator permissions...`);
+          try {
+            const response = await github.rest.repos.getCollaboratorPermissionLevel({
+              owner: repoOwner,
+              repo: repoName,
+              username: actor,
+            });
+            const permission = response.data.permission;
+            core.info(`User @${actor} has '${permission}' permission on ${repoOwner}/${repoName}`);
+
+            const allowed = requiredPermission === "admin"
+              ? permission === "admin"
+              : permission === "admin" || permission === "write";
+
+            if (allowed) {
+              core.info(`User @${actor} has sufficient repository permission. Proceeding.`);
+              return;
+            }
+            core.info(`  Permission '${permission}' is insufficient (requires '${requiredPermission}' or higher)`);
+          } catch (error) {
+            core.info(`  Collaborator permission check failed: ${error.message}`);
+          }
+
+          // --- Condition 4: ok-to-test label ---
+          core.info(`Checking for ok-to-test label...`);
+          if (
+            context.payload.action === "labeled" &&
+            context.payload.label &&
+            context.payload.label.name === "ok-to-test"
+          ) {
+            core.info(`ok-to-test label applied by @${context.actor}. Removing label and proceeding.`);
+            try {
+              await github.rest.issues.removeLabel({
+                owner: repoOwner,
+                repo: repoName,
+                issue_number: context.payload.pull_request.number,
+                name: "ok-to-test",
+              });
+              core.info(`  ok-to-test label removed successfully.`);
+            } catch (err) {
+              if (err.status !== 404) {
+                core.setFailed(`Failed to remove ok-to-test label: ${err.message}`);
+                return;
+              }
+              core.info(`  Label already removed (likely by another matrix job).`);
+            }
+            return;
+          }
+
+          core.info(`No ok-to-test label event detected.`);
+          core.setFailed(
+            `Permission denied: @${actor} is not a trusted bot, org/team member, or repo collaborator with '${requiredPermission}' access. A maintainer can approve by adding the 'ok-to-test' label.`
+          );

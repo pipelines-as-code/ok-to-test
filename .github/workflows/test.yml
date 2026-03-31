@@ -1,0 +1,35 @@
+name: Test Action
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  yaml-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint action.yml
+        run: |
+          pip install yamllint
+          yamllint -d relaxed action.yml
+
+  action-loads:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify action metadata parses
+        run: |
+          python3 -c "
+          import yaml, sys
+          with open('action.yml') as f:
+              data = yaml.safe_load(f)
+          assert data['name'] == 'ok-to-test', f'Unexpected name: {data[\"name\"]}'
+          assert 'github-token' in data['inputs'], 'Missing github-token input'
+          assert 'trusted-bots' in data['inputs'], 'Missing trusted-bots input'
+          assert 'team-slugs' in data['inputs'], 'Missing team-slugs input'
+          assert 'required-permission' in data['inputs'], 'Missing required-permission input'
+          print('action.yml validated successfully')
+          "
