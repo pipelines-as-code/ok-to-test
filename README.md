@@ -15,6 +15,10 @@ If any condition passes, the step succeeds and CI proceeds. If all fail, the ste
 
 When the `ok-to-test` label triggers a run, the label is **removed immediately** so that subsequent pushes by the external contributor require re-approval.
 
+## Requirements
+
+This action only works with `pull_request_target` events.
+
 ## Usage
 
 ```yaml
@@ -86,6 +90,7 @@ A token with `org:read` scope is needed if your org has private membership and y
 - This action is designed for `pull_request_target` workflows where CI runs on the base branch but is triggered by external PRs.
 - The `ok-to-test` label can only be added by users with write access to the repo, so it is inherently gated.
 - The label is removed after each approved run, preventing a single approval from covering future (potentially malicious) pushes.
+- If you have automation (bots, workflows) that adds labels to PRs, ensure it does not add the `ok-to-test` label unintentionally, as this will trigger CI for external contributors. If this is intentional from the automation side, no action is needed.
 
 ## License
 

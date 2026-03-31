@@ -166,7 +166,7 @@ runs:
                 core.setFailed(`Failed to remove ok-to-test label: ${err.message}`);
                 return;
               }
-              core.info(`  Label already removed (likely by another matrix job).`);
+              core.info(`  Label not found, skipping removal.`);
             }
             return;
           }
