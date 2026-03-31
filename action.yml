@@ -56,22 +56,22 @@ runs:
             .filter(Boolean);
           const requiredPermission = `${{ inputs.required-permission }}`;
 
-          core.info(`Starting permission check for user: @${actor}`);
-          core.info(`Repository: ${repoOwner}/${repoName}`);
+          core.info(`🔍 Starting permission check for user: @${actor}`);
+          core.info(`📋 Repository: ${repoOwner}/${repoName}`);
 
           // --- Condition 1: Trusted bots ---
-          core.info(`Checking if @${actor} is a trusted bot...`);
+          core.info(`🤖 Checking if @${actor} is a trusted bot...`);
           if (trustedBots.includes(actor)) {
-            core.info(`User @${actor} is a trusted bot. Proceeding.`);
+            core.info(`✅ User @${actor} is a trusted bot. Proceeding.`);
             return;
           }
-          core.info(`User @${actor} is not a trusted bot.`);
+          core.info(`   ❌ User @${actor} is not a trusted bot.`);
 
           // --- Condition 2: Org/team membership ---
-          core.info(`Checking organization and team membership...`);
+          core.info(`👥 Checking organization and team membership...`);
           try {
             if (teamSlugs.length > 0) {
-              core.info(`Checking team membership for ${teamSlugs.length} team(s)...`);
+              core.info(`🔍 Checking team membership for ${teamSlugs.length} team(s)...`);
               for (const team_slug of teamSlugs) {
                 core.info(`  Checking team: ${team_slug}...`);
                 try {
@@ -84,45 +84,45 @@ runs:
                     membership?.data?.state === "active" &&
                     (membership.data.role === "maintainer" || membership.data.role === "member")
                   ) {
-                    core.info(`User @${actor} is a member of team '${team_slug}'. Proceeding.`);
+                    core.info(`✅ User @${actor} is a member of team '${team_slug}'. Proceeding.`);
                     return;
                   }
                   core.info(`  Team membership found but state is not active: ${membership.data.state}`);
                 } catch (err) {
-                  core.info(`  User @${actor} is not a member of team '${team_slug}': ${err.message}`);
+                  core.info(`   ❌ User @${actor} is not a member of team '${team_slug}': ${err.message}`);
                 }
               }
-              core.info(`User @${actor} is not a member of any configured teams. Falling back to org membership.`);
+              core.info(`ⓘ User @${actor} is not a member of any configured teams. Falling back to org membership.`);
             }
 
-            core.info(`Checking organization membership for @${actor} in '${targetOrg}'...`);
+            core.info(`🏢 Checking organization membership for @${actor} in '${targetOrg}'...`);
             try {
               await github.rest.orgs.checkMembershipForUser({
                 org: targetOrg,
                 username: actor,
               });
-              core.info(`User @${actor} is a member of '${targetOrg}'. Proceeding.`);
+              core.info(`✅ User @${actor} is a member of '${targetOrg}'. Proceeding.`);
               return;
             } catch (err) {
-              core.info(`  Private membership check failed: ${err.message}`);
+              core.info(`   ❌ Private membership check failed: ${err.message}`);
               try {
                 await github.rest.orgs.checkPublicMembershipForUser({
                   org: targetOrg,
                   username: actor,
                 });
-                core.info(`User @${actor} is a public member of '${targetOrg}'. Proceeding.`);
+                core.info(`✅ User @${actor} is a public member of '${targetOrg}'. Proceeding.`);
                 return;
               } catch (publicErr) {
-                core.info(`  Public membership check failed: ${publicErr.message}`);
+                core.info(`   ❌ Public membership check failed: ${publicErr.message}`);
                 throw publicErr;
               }
             }
           } catch (error) {
-            core.info(`User @${actor} is not a member of '${targetOrg}'. Checking repository permissions.`);
+            core.info(`ⓘ User @${actor} is not a member of '${targetOrg}'. Checking repository permissions.`);
           }
 
           // --- Condition 3: Repository collaborator permission ---
-          core.info(`Checking repository collaborator permissions...`);
+          core.info(`🔐 Checking repository collaborator permissions...`);
           try {
             const response = await github.rest.repos.getCollaboratorPermissionLevel({
               owner: repoOwner,
@@ -137,22 +137,22 @@ runs:
               : permission === "admin" || permission === "write";
 
             if (allowed) {
-              core.info(`User @${actor} has sufficient repository permission. Proceeding.`);
+              core.info(`✅ User @${actor} has sufficient repository permission. Proceeding.`);
               return;
             }
-            core.info(`  Permission '${permission}' is insufficient (requires '${requiredPermission}' or higher)`);
+            core.info(`   ❌ Permission '${permission}' is insufficient (requires '${requiredPermission}' or higher)`);
           } catch (error) {
-            core.info(`  Collaborator permission check failed: ${error.message}`);
+            core.info(`   ❌ Collaborator permission check failed: ${error.message}`);
           }
 
           // --- Condition 4: ok-to-test label ---
-          core.info(`Checking for ok-to-test label...`);
+          core.info(`🏷️ Checking for ok-to-test label...`);
           if (
             context.payload.action === "labeled" &&
             context.payload.label &&
             context.payload.label.name === "ok-to-test"
           ) {
-            core.info(`ok-to-test label applied by @${context.actor}. Removing label and proceeding.`);
+            core.info(`✅ ok-to-test label applied by @${context.actor}. Removing label and proceeding.`);
             try {
               await github.rest.issues.removeLabel({
                 owner: repoOwner,
@@ -171,7 +171,7 @@ runs:
             return;
           }
 
-          core.info(`No ok-to-test label event detected.`);
+          core.info(`   ❌ No ok-to-test label event detected.`);
           core.setFailed(
-            `Permission denied: @${actor} is not a trusted bot, org/team member, or repo collaborator with '${requiredPermission}' access. A maintainer can approve by adding the 'ok-to-test' label.`
+            `❌ Permission denied: @${actor} is not a trusted bot, org/team member, or repo collaborator with '${requiredPermission}' access. A maintainer can approve by adding the 'ok-to-test' label.`
           );
