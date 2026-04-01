@@ -46,6 +46,12 @@ runs:
             return;
           }
 
+          const requiredPermission = `${{ inputs.required-permission }}`;
+          if (requiredPermission !== "write" && requiredPermission !== "admin") {
+            core.setFailed(`Invalid required-permission: '${requiredPermission}'. Must be 'write' or 'admin'.`);
+            return;
+          }
+
           const actor = context.payload.pull_request.user.login;
           const repoOwner = context.repo.owner;
           const repoName = context.repo.repo;
@@ -59,7 +65,6 @@ runs:
             .split(",")
             .map((s) => s.trim())
             .filter(Boolean);
-          const requiredPermission = `${{ inputs.required-permission }}`;
 
           core.info(`🔍 Starting permission check for user: @${actor}`);
           core.info(`📋 Repository: ${repoOwner}/${repoName}`);
