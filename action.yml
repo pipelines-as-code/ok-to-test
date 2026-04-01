@@ -6,7 +6,7 @@ branding:
 
 inputs:
   github-token:
-    description: "GitHub token with repo and org:read scopes. Defaults to the workflow token."
+    description: "GitHub token. Minimum permissions: pull-requests:read, issues:write (for label removal). Add members:read if using team-slugs with private org membership."
     default: ${{ github.token }}
   trusted-bots:
     description: "Comma-separated list of trusted bot usernames that bypass all checks."
