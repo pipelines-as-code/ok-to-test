@@ -22,6 +22,10 @@ runs:
   using: composite
   steps:
     - uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
+      env:
+        INPUT_TRUSTED_BOTS: ${{ inputs.trusted-bots }}
+        INPUT_TEAM_SLUGS: ${{ inputs.team-slugs }}
+        INPUT_REQUIRED_PERMISSION: ${{ inputs.required-permission }}
       with:
         github-token: ${{ inputs.github-token }}
         script: |
@@ -46,7 +50,7 @@ runs:
             return;
           }
 
-          const requiredPermission = `${{ inputs.required-permission }}`;
+          const requiredPermission = process.env.INPUT_REQUIRED_PERMISSION;
           if (requiredPermission !== "write" && requiredPermission !== "admin") {
             core.setFailed(`Invalid required-permission: '${requiredPermission}'. Must be 'write' or 'admin'.`);
             return;
@@ -57,11 +61,11 @@ runs:
           const repoName = context.repo.repo;
           const targetOrg = context.repo.owner;
 
-          const trustedBots = `${{ inputs.trusted-bots }}`
+          const trustedBots = (process.env.INPUT_TRUSTED_BOTS || "")
             .split(",")
             .map((s) => s.trim())
             .filter(Boolean);
-          const teamSlugs = `${{ inputs.team-slugs }}`
+          const teamSlugs = (process.env.INPUT_TEAM_SLUGS || "")
             .split(",")
             .map((s) => s.trim())
             .filter(Boolean);
