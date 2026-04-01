@@ -162,7 +162,26 @@ runs:
             context.payload.label &&
             context.payload.label.name === "ok-to-test"
           ) {
-            core.info(`✅ ok-to-test label applied by @${context.actor}. Removing label and proceeding.`);
+            // Verify the label was applied by a user with write permission
+            const labeler = context.actor;
+            core.info(`🔐 Verifying label applier @${labeler} has write permission...`);
+            try {
+              const { data } = await github.rest.repos.getCollaboratorPermissionLevel({
+                owner: repoOwner,
+                repo: repoName,
+                username: labeler,
+              });
+              if (data.permission !== "admin" && data.permission !== "write" && data.permission !== "maintain") {
+                core.setFailed(`❌ Label applier @${labeler} has '${data.permission}' permission. Only users with write access can approve via ok-to-test.`);
+                return;
+              }
+              core.info(`✅ Label applier @${labeler} has '${data.permission}' permission.`);
+            } catch (err) {
+              core.setFailed(`❌ Failed to verify label applier permissions: ${err.message}`);
+              return;
+            }
+
+            core.info(`✅ ok-to-test label applied by @${labeler}. Removing label and proceeding.`);
             try {
               await github.rest.issues.removeLabel({
                 owner: repoOwner,
