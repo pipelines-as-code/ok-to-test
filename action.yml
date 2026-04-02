@@ -169,6 +169,8 @@ runs:
             // Verify the label was applied by a user with write permission
             const labeler = context.actor;
             core.info(`🔐 Verifying label applier @${labeler} has write permission...`);
+            let labelerAuthorized = false;
+            let failMessage = "";
             try {
               const { data } = await github.rest.repos.getCollaboratorPermissionLevel({
                 owner: repoOwner,
@@ -176,16 +178,16 @@ runs:
                 username: labeler,
               });
               if (data.permission !== "admin" && data.permission !== "write" && data.permission !== "maintain") {
-                core.setFailed(`❌ Label applier @${labeler} has '${data.permission}' permission. Only users with write access can approve via ok-to-test.`);
-                return;
+                failMessage = `❌ Label applier @${labeler} has '${data.permission}' permission. Only users with write access can approve via ok-to-test.`;
+              } else {
+                labelerAuthorized = true;
+                core.info(`✅ Label applier @${labeler} has '${data.permission}' permission.`);
               }
-              core.info(`✅ Label applier @${labeler} has '${data.permission}' permission.`);
             } catch (err) {
-              core.setFailed(`❌ Failed to verify label applier permissions: ${err.message}`);
-              return;
+              failMessage = `❌ Failed to verify label applier permissions: ${err.message}`;
             }
 
-            core.info(`✅ ok-to-test label applied by @${labeler}. Removing label and proceeding.`);
+            // Always remove the label first, then report the result
             try {
               await github.rest.issues.removeLabel({
                 owner: repoOwner,
@@ -201,6 +203,13 @@ runs:
               }
               core.info(`  Label not found, skipping removal.`);
             }
+
+            if (!labelerAuthorized) {
+              core.setFailed(failMessage);
+              return;
+            }
+
+            core.info(`✅ ok-to-test label applied by @${labeler}. Proceeding.`);
             return;
           }
 
